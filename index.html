@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스텝바이스텝 회귀 학습 시뮬레이터</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --gray: #64748b;
+            --bg: #f8fafc;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Pretendard', -apple-system, sans-serif;
+            margin: 0; padding: 15px;
+            background-color: var(--bg);
+            color: #0f172a;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .container {
+            width: 100%; max-width: 600px;
+            background: white; padding: 15px;
+            border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        h1 { font-size: 1.3rem; text-align: center; margin: 5px 0 15px 0; }
+        .tips {
+            background-color: #eff6ff; padding: 12px;
+            border-radius: 8px; font-size: 0.85rem; margin-bottom: 15px;
+            line-height: 1.5; color: #1e3a8a;
+        }
+        .tips ul { margin: 8px 0 0 0; padding-left: 20px; }
+        
+        .status-board {
+            display: flex; flex-direction: column; gap: 8px;
+            background: #f1f5f9; padding: 12px; border-radius: 8px;
+            margin-bottom: 15px; font-weight: bold; font-size: 0.95rem;
+        }
+        .status-row { display: flex; justify-content: space-between; align-items: center; }
+        .equation { color: var(--success); font-family: monospace; font-size: 1.05rem; background: #e2e8f0; padding: 4px 8px; border-radius: 4px;}
+        .error-container { text-align: right; }
+        .error-rate { color: var(--danger); font-size: 1.05rem; }
+        .error-desc { font-size: 0.75rem; color: var(--gray); font-weight: normal; margin-top: 2px; }
+        
+        .canvas-container {
+            position: relative; width: 100%; aspect-ratio: 3 / 2;
+            background-color: #ffffff; border: 2px solid #e2e8f0;
+            border-radius: 8px; touch-action: none; overflow: hidden;
+        }
+        canvas { width: 100%; height: 100%; cursor: crosshair; }
+        
+        .controls {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px;
+        }
+        .controls-full {
+            grid-column: span 2; display: flex; gap: 8px;
+        }
+        button {
+            padding: 10px 8px; font-size: 0.9rem; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer;
+            transition: opacity 0.2s; color: white; text-align: center;
+        }
+        button:active { opacity: 0.8; transform: scale(0.98); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        .btn-init { background-color: var(--warning); }
+        .btn-step { background-color: var(--primary); }
+        .btn-auto { background-color: var(--success); }
+        .btn-prev { background-color: var(--gray); flex: 1; }
+        .btn-reset { background-color: #94a3b8; flex: 1; }
+
+        .toast {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 8px 16px;
+            border-radius: 20px; font-size: 0.85rem; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s; white-space: nowrap; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>회귀(Regression) 시뮬레이터</h1>
+    
+    <div class="tips">
+        <strong>💡 실습 가이드</strong>
+        <ul>
+            <li><strong>데이터 입력:</strong> 빈 공간을 터치해 점을 5~10개 찍어보세요.</li>
+            <li><strong>초기화:</strong> [초기 선 긋기]를 누르면 컴퓨터가 <strong style="color: var(--danger); font-size: 1.05rem;">무작위</strong>로 선을 긋습니다.</li>
+            <li><strong>학습하기:</strong> [1단계 학습]을 누를 때마다 <b>빨간 점선(오차)</b>이 줄어드는 방향으로 선이 스스로 이동합니다.</li>
+        </ul>
+    </div>
+
+    <div class="status-board">
+        <div class="status-row">
+            <div>회귀 방정식 (모델)</div>
+            <div class="equation" id="eq-display">선이 없습니다</div>
+        </div>
+        <div class="status-row">
+            <div>예측 정확도 지표</div>
+            <div class="error-container">
+                <div class="error-rate">평균제곱오차(MSE): <span id="error-display">0.0000</span></div>
+                <div class="error-desc">(오차 제곱의 평균)</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="canvas-container" id="canvas-wrapper">
+        <canvas id="simCanvas"></canvas>
+        <div id="toast" class="toast">데이터가 추가되었습니다.</div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-init" class="btn-init">초기 선 긋기</button>
+        <button id="btn-step" class="btn-step" disabled>+1단계 학습 (Step)</button>
+        <div class="controls-full">
+            <button id="btn-prev" class="btn-prev" disabled>이전 단계 ↩</button>
+            <button id="btn-auto" class="btn-auto" disabled>연속 학습 ▶</button>
+            <button id="btn-reset" class="btn-reset">모두 지우기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('canvas-wrapper');
+    
+    let cWidth = 600;
+    let cHeight = 400;
+    canvas.width = cWidth;
+    canvas.height = cHeight;
+
+    let points = [];
+    let w = null; 
+    let b = null; 
+    let history = []; 
+    let isAutoRunning = false;
+    let autoInterval;
+    const learningRate = 0.05; 
+
+    const eqDisplay = document.getElementById('eq-display');
+    const errorDisplay = document.getElementById('error-display');
+    const btnInit = document.getElementById('btn-init');
+    const btnStep = document.getElementById('btn-step');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnAuto = document.getElementById('btn-auto');
+    const btnReset = document.getElementById('btn-reset');
+    const toast = document.getElementById('toast');
+
+    function getNormalizedPos(evt) {
+        const rect = canvas.getBoundingClientRect();
+        let clientX = evt.clientX;
+        let clientY = evt.clientY;
+        if(evt.touches && evt.touches.length > 0) {
+            clientX = evt.touches[0].clientX;
+            clientY = evt.touches[0].clientY;
+        }
+        const x = (clientX - rect.left) / rect.width;
+        const y = 1.0 - ((clientY - rect.top) / rect.height);
+        return { x, y };
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, cWidth, cHeight);
+
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.lineWidth =
