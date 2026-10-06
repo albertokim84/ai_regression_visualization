@@ -48,9 +48,16 @@
         .canvas-container {
             position: relative; width: 100%; aspect-ratio: 3 / 2;
             background-color: #ffffff; border: 2px solid #e2e8f0;
-            border-radius: 8px; touch-action: none; overflow: hidden;
+            border-radius: 8px; overflow: hidden;
         }
-        canvas { width: 100%; height: 100%; cursor: crosshair; }
+        
+        /* 터치 시 스크롤 방지 및 이벤트 충돌 해결을 위한 CSS 추가 */
+        canvas { 
+            width: 100%; height: 100%; 
+            cursor: crosshair; 
+            touch-action: none; 
+            pointer-events: auto;
+        }
         
         .controls {
             display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 15px;
@@ -88,7 +95,7 @@
     <div class="tips">
         <strong>💡 실습 가이드</strong>
         <ul>
-            <li><strong>데이터 입력:</strong> 화면에 기본 데이터가 있습니다. 빈 공간을 터치해 점을 더 추가해 보세요.</li>
+            <li><strong>데이터 입력:</strong> 빈 공간을 터치해 점을 5~10개 찍어보세요.</li>
             <li><strong>초기화:</strong> [초기 선 긋기]를 누르면 컴퓨터가 <strong style="color: var(--danger); font-size: 1.05rem;">무작위</strong>로 선을 긋습니다.</li>
             <li><strong>학습하기:</strong> [1단계 학습]을 누를 때마다 <b>빨간 점선(오차)</b>이 줄어드는 방향으로 선이 스스로 이동합니다.</li>
         </ul>
@@ -117,82 +124,4 @@
         <button id="btn-init" class="btn-init">초기 선 긋기</button>
         <button id="btn-step" class="btn-step" disabled>+1단계 학습 (Step)</button>
         <div class="controls-full">
-            <button id="btn-prev" class="btn-prev" disabled>이전 단계 ↩</button>
-            <button id="btn-auto" class="btn-auto" disabled>연속 학습 ▶</button>
-            <button id="btn-reset" class="btn-reset">모두 지우기</button>
-        </div>
-    </div>
-</div>
-
-<script>
-    const canvas = document.getElementById('simCanvas');
-    const ctx = canvas.getContext('2d');
-    
-    let cWidth = 600;
-    let cHeight = 400;
-    canvas.width = cWidth;
-    canvas.height = cHeight;
-
-    // 접속 시 기본으로 배치될 데이터 5개 추가
-    let points = [
-        { x: 0.15, y: 0.25 },
-        { x: 0.35, y: 0.40 },
-        { x: 0.50, y: 0.45 },
-        { x: 0.70, y: 0.65 },
-        { x: 0.85, y: 0.80 }
-    ];
-    
-    let w = null; 
-    let b = null; 
-    let history = []; 
-    let isAutoRunning = false;
-    let autoInterval;
-    const learningRate = 0.05; 
-
-    const eqDisplay = document.getElementById('eq-display');
-    const errorDisplay = document.getElementById('error-display');
-    const btnInit = document.getElementById('btn-init');
-    const btnStep = document.getElementById('btn-step');
-    const btnPrev = document.getElementById('btn-prev');
-    const btnAuto = document.getElementById('btn-auto');
-    const btnReset = document.getElementById('btn-reset');
-    const toast = document.getElementById('toast');
-
-    function getNormalizedPos(evt) {
-        const rect = canvas.getBoundingClientRect();
-        let clientX = evt.clientX;
-        let clientY = evt.clientY;
-        if(evt.touches && evt.touches.length > 0) {
-            clientX = evt.touches[0].clientX;
-            clientY = evt.touches[0].clientY;
-        }
-        const x = (clientX - rect.left) / rect.width;
-        const y = 1.0 - ((clientY - rect.top) / rect.height);
-        return { x, y };
-    }
-
-    function draw() {
-        ctx.clearRect(0, 0, cWidth, cHeight);
-
-        ctx.strokeStyle = '#f1f5f9';
-        ctx.lineWidth = 1;
-        for(let i = 1; i < 10; i++) {
-            ctx.beginPath(); ctx.moveTo(i*cWidth/10, 0); ctx.lineTo(i*cWidth/10, cHeight); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, i*cHeight/10); ctx.lineTo(cWidth, i*cHeight/10); ctx.stroke();
-        }
-
-        let totalError = 0;
-
-        if (w !== null && b !== null) {
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            points.forEach(p => {
-                const predY = w * p.x + b;
-                const error = p.y - predY;
-                totalError += error * error; 
-
-                const canvasX = p.x * cWidth;
-                const canvasY = (1 - p.y) * cHeight;
-                const canvasPredY = (1 - predY) * cHeight;
-
-                const intensity = Math.min(255, Math.abs(error) * 50
+            <button id="btn-prev
