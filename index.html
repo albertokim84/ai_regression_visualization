@@ -1,3 +1,4 @@
+HTML
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -124,4 +125,241 @@
         <button id="btn-init" class="btn-init">초기 선 긋기</button>
         <button id="btn-step" class="btn-step" disabled>+1단계 학습 (Step)</button>
         <div class="controls-full">
-            <button id="btn-prev
+            <button id="btn-prev" class="btn-prev" disabled>이전 단계 ↩</button>
+            <button id="btn-auto" class="btn-auto" disabled>연속 학습 ▶</button>
+            <button id="btn-reset" class="btn-reset">모두 지우기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let cWidth = 600;
+    let cHeight = 400;
+    canvas.width = cWidth;
+    canvas.height = cHeight;
+
+    // 다시 빈 화면(데이터 없음)으로 초기화
+    let points = []; 
+    
+    let w = null; 
+    let b = null; 
+    let history = []; 
+    let isAutoRunning = false;
+    let autoInterval;
+    const learningRate = 0.05; 
+
+    const eqDisplay = document.getElementById('eq-display');
+    const errorDisplay = document.getElementById('error-display');
+    const btnInit = document.getElementById('btn-init');
+    const btnStep = document.getElementById('btn-step');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnAuto = document.getElementById('btn-auto');
+    const btnReset = document.getElementById('btn-reset');
+    const toast = document.getElementById('toast');
+
+    // === 🛠 오류 해결: 마우스 클릭 이벤트 완벽 분리 ===
+    canvas.addEventListener('click', function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width;
+        const y = 1.0 - ((e.clientY - rect.top) / rect.height);
+        addPoint(x, y);
+    });
+
+    // === 🛠 오류 해결: 모바일 터치 이벤트 완벽 분리 ===
+    canvas.addEventListener('touchstart', function(e) {
+        // e.preventDefault()로 터치 시 화면이 스크롤되거나 클릭 이벤트가 이중으로 발생하는 것을 막습니다.
+        e.preventDefault(); 
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.touches[0].clientX - rect.left) / rect.width;
+        const y = 1.0 - ((e.touches[0].clientY - rect.top) / rect.height);
+        addPoint(x, y);
+    }, {passive: false});
+
+    // 점 추가 공통 함수
+    function addPoint(x, y) {
+        if (w !== null) saveState();
+        points.push({x: x, y: y});
+        showToast("데이터 추가됨");
+        draw();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, cWidth, cHeight);
+
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.lineWidth = 1;
+        for(let i = 1; i < 10; i++) {
+            ctx.beginPath(); ctx.moveTo(i*cWidth/10, 0); ctx.lineTo(i*cWidth/10, cHeight); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, i*cHeight/10); ctx.lineTo(cWidth, i*cHeight/10); ctx.stroke();
+        }
+
+        let totalError = 0;
+
+        if (w !== null && b !== null) {
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            points.forEach(p => {
+                const predY = w * p.x + b;
+                const error = p.y - predY;
+                totalError += error * error; 
+
+                const canvasX = p.x * cWidth;
+                const canvasY = (1 - p.y) * cHeight;
+                const canvasPredY = (1 - predY) * cHeight;
+
+                const intensity = Math.min(255, Math.abs(error) * 500);
+                ctx.strokeStyle = `rgba(239, 68, 68, ${intensity/255 + 0.3})`;
+                
+                ctx.beginPath();
+                ctx.moveTo(canvasX, canvasY);
+                ctx.lineTo(canvasX, canvasPredY);
+                ctx.stroke();
+            });
+            ctx.setLineDash([]);
+
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#22c55e';
+            ctx.beginPath();
+            const yAt0 = (1 - (w * 0 + b)) * cHeight;
+            const yAt1 = (1 - (w * 1 + b)) * cHeight;
+            ctx.moveTo(0, yAt0);
+            ctx.lineTo(cWidth, yAt1);
+            ctx.stroke();
+        }
+
+        points.forEach(p => {
+            ctx.fillStyle = '#3b82f6';
+            ctx.beginPath();
+            ctx.arc(p.x * cWidth, (1 - p.y) * cHeight, 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+
+        updateStatusBoard(totalError);
+    }
+
+    function updateStatusBoard(totalError) {
+        if (w !== null && b !== null) {
+            const sign = b >= 0 ? '+' : '-';
+            eqDisplay.innerHTML = `y = <span style="color:#2563eb">[가중치: ${w.toFixed(2)}]</span>x ${sign} <span style="color:#16a34a">[편향: ${Math.abs(b).toFixed(2)}]</span>`;
+            
+            const mse = points.length > 0 ? totalError / points.length : 0;
+            errorDisplay.textContent = mse.toFixed(4);
+        } else {
+            eqDisplay.textContent = '선이 없습니다';
+            errorDisplay.textContent = '0.0000';
+        }
+        
+        btnPrev.disabled = history.length === 0;
+        btnStep.disabled = w === null || points.length === 0;
+        btnAuto.disabled = w === null || points.length === 0;
+    }
+
+    function saveState() {
+        history.push({
+            points: JSON.parse(JSON.stringify(points)),
+            w: w, b: b
+        });
+    }
+
+    function learnStep() {
+        if (points.length === 0) return;
+        saveState();
+
+        let wGradient = 0;
+        let bGradient = 0;
+        const N = points.length;
+
+        points.forEach(p => {
+            const predY = w * p.x + b;
+            const error = predY - p.y;
+            wGradient += (2/N) * error * p.x;
+            bGradient += (2/N) * error;
+        });
+
+        w -= learningRate * wGradient;
+        b -= learningRate * bGradient;
+
+        draw();
+    }
+
+    btnInit.addEventListener('click', () => {
+        if(points.length === 0) {
+            alert("먼저 캔버스에 터치하여 점을 찍어주세요!");
+            return;
+        }
+        if(w !== null) saveState();
+        
+        w = (Math.random() - 0.5) * 2; 
+        b = Math.random() * 0.5 + 0.25;
+        history = []; 
+        draw();
+    });
+
+    btnStep.addEventListener('click', () => {
+        stopAuto();
+        learnStep();
+    });
+
+    btnPrev.addEventListener('click', () => {
+        if (history.length > 0) {
+            stopAuto();
+            const lastState = history.pop();
+            points = lastState.points;
+            w = lastState.w;
+            b = lastState.b;
+            draw();
+        }
+    });
+
+    btnAuto.addEventListener('click', () => {
+        if (isAutoRunning) {
+            stopAuto();
+        } else {
+            isAutoRunning = true;
+            btnAuto.textContent = '일시정지 ⏸';
+            btnAuto.style.backgroundColor = '#f59e0b';
+            
+            autoInterval = setInterval(() => {
+                const previousMse = errorDisplay.textContent;
+                
+                learnStep();
+                
+                // 오차 변화가 없으면 조기 종료
+                if (previousMse === errorDisplay.textContent) {
+                    stopAuto();
+                    showToast("🎉 최적의 선을 찾았습니다! (조기 종료)");
+                }
+            }, 50); 
+        }
+    });
+
+    function stopAuto() {
+        isAutoRunning = false;
+        clearInterval(autoInterval);
+        btnAuto.textContent = '연속 학습 ▶';
+        btnAuto.style.backgroundColor = 'var(--success)';
+    }
+
+    btnReset.addEventListener('click', () => {
+        stopAuto();
+        points = []; w = null; b = null; history = [];
+        draw();
+    });
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.style.opacity = 1;
+        setTimeout(() => toast.style.opacity = 0, 1500); 
+    }
+
+    // 초기 화면 그리기
+    draw();
+</script>
+</body>
+</html>
